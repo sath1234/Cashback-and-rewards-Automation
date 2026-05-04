@@ -1,0 +1,78 @@
+from playwright.sync_api import sync_playwright, TimeoutError
+
+CDP_ENDPOINT = "http://127.0.0.1:9222"
+
+
+# --- SWITCH TO EXISTING NTP ---
+def switch_to_ntp(context):
+    for page in context.pages:
+        try:
+            url = page.url or ""
+            title = page.title() if page.url else ""
+
+            if (
+                "newtab" in url
+                or url in ("about:blank", "")
+                or "New Tab" in title
+            ):
+                page.bring_to_front()
+                page.wait_for_timeout(1500)
+                print("✅ Switched to NTP")
+                return page
+        except Exception:
+            pass
+
+    print("❌ No existing NTP tab found")
+    return None
+
+
+# --- CLICK DARK MODE (CONFIRMED XPATH) ---
+def click_dark_mode(page):
+    xpath = "//div[@class='sc-dVdSBb daIUil']//span[text()='Dark Mode']"
+
+    try:
+        locator = page.locator(xpath).first
+
+        # 1️⃣ Wait for element to be ATTACHED (not visible yet)
+        locator.wait_for(state="attached", timeout=15000)
+
+        # 2️⃣ Bring element into view (important for NTP)
+        locator.scroll_into_view_if_needed()
+
+        # 3️⃣ Small delay for animations
+        page.wait_for_timeout(700)
+
+        # 4️⃣ Force click (NTP UI needs this)
+        locator.click(force=True)
+
+        print("🌙 Dark Mode clicked successfully")
+        return True
+
+    except TimeoutError:
+        print("❌ Dark Mode element never attached to DOM")
+        return False
+
+    except Exception as e:
+        print(f"❌ Failed to click Dark Mode: {e}")
+        return False
+
+
+# --- MAIN ---
+def main():
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.connect_over_cdp(CDP_ENDPOINT)
+            context = browser.contexts[0]
+        except Exception as e:
+            print(f"❌ CDP connection failed: {e}")
+            return
+
+        ntp_page = switch_to_ntp(context)
+        if not ntp_page:
+            return
+
+        click_dark_mode(ntp_page)
+
+
+if __name__ == "__main__":
+    main()
